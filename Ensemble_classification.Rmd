@@ -1,0 +1,223 @@
+---
+output:
+  html_document: default
+  pdf_document: default
+  word_document: default
+  bookdown::html_document2: default
+header-includes: \usepackage{color}
+---
+
+\definecolor{Purple}{RGB}{128,0,128}
+\definecolor{gray97}{gray}{.97}
+\definecolor{gray75}{gray}{.75}
+\definecolor{gray45}{gray}{.45}
+
+
+\begin{titlepage}
+	\begin{sffamily}
+	\color{Purple}
+	\begin{center}
+	  \begin{figure}
+			\makebox[\textwidth][c]{\includegraphics[width=16cm]{University-of-Washington-Logo-history.png}}
+		\end{figure}
+		\vspace{2.5cm}
+		 	{\Huge Report of Ensamble Classification}\\
+		 	\vspace*{0.5cm}
+	 		\rule{10.5cm}{0.1mm}\\
+			\vspace*{0.9cm}
+			{\LARGE Yana Liu}\\ 
+			\vspace*{1cm}
+		\begin{Large}
+			
+		 $15^{th}$ March 2023\\
+		\end{Large}
+	\end{center}
+	\vfill
+
+	\end{sffamily}
+\end{titlepage}
+
+\newpage 
+
+\tableofcontents
+
+\newpage 
+## Resumen 
+
+In this problem, we developed a classification model using the heterogeneous ensemble approach, which combined the predictions of four different classification algorithms (SVM, Neural Net, Decision Tree, and Random Forest) to improve overall accuracy. We used the "BreastCancer" dataset from the mlbench R package and split it into training and test sets with a 80/20 ratio.
+
+We trained individual models on the training set and then combined their predictions using a random forest meta-model and evaluated the performance of the ensemble model using a confusion matrix and calculated its accuracy. The results showed that the ensemble model correctly classified the majority of the tumors in the test set, achieving an accuracy of around 96-97%.
+
+Overall, the heterogeneous ensemble approach is a useful technique for improving classification performance by combining the strengths of multiple algorithms. However, it is important to keep in mind the limitations of the data and the potential for overfitting when developing such models.
+
+\newpage 
+
+
+## Load data
+
+```{r}
+library(mlbench)
+data(BreastCancer)
+BreastCancer <- na.omit(BreastCancer) 
+BreastCancer$Id <- NULL 
+```
+
+
+
+### Split train data & test data
+
+Set seed for reproducibility, randomly select 80% of the data for training, and the rest 20% fo the data is for testing.
+
+
+```{r}
+set.seed(2)
+ind <- sample(2, nrow(BreastCancer), replace = TRUE, prob=c(0.8, 0.2))
+traindata=BreastCancer[ind == 1,]
+testdata=BreastCancer[ind == 2,]
+```
+
+
+
+### Load packages
+
+```{r include=FALSE}
+library(caret)
+library(randomForest) #rf
+library(rpart)#tree
+library(e1071) #svm
+library(MASS)
+library(nnet)#nnet
+```
+
+
+
+## Create classifiers
+
+Next, we train individual models using four different classification algorithms: random forest, SVM with radial kernel, neural network, and decision tree. We store the trained models in separate variables.
+
+Here I use SVM, Neural Net, Decision Tree and Random Forest those 4 classifiers.
+
+
+We then make predictions on the testing set using each of the individual models, and combine the predictions into a data frame. We use this data frame to train a meta-model, which is a random forest classifier in this case.
+
+
+### SVM
+
+the first classifier is svm.
+
+we can see the Accuracy Table of svm below
+
+```{r}
+mysvm <- svm(Class ~ ., data=traindata, probability = TRUE)
+mysvm.pred <- predict(mysvm, type="prob", newdata=testdata, probability = TRUE)
+matrixsvm <- confusionMatrix(data=mysvm.pred, reference = testdata$Class)
+matrixsvm$table
+```
+
+and the graph of the confusion matrix of svm classifier
+
+```{r echo=FALSE, fig.cap=("Confusion Matrix of svm "), fig.show='hold', message=FALSE, warning=FALSE, out.width='50%'}
+fourfoldplot(matrixsvm$table, color = c("cyan", "pink"),
+             conf.level = 0, margin = 1, main = "Confusion Matrix")
+```
+
+
+### Neural Net
+
+```{r message=FALSE, warning=FALSE}
+mynnet <- nnet(Class ~ ., data=traindata, probability = TRUE, size=1)
+mynnet.pred <- predict(mynnet,type="class", newdata=testdata, probability = TRUE)
+mynnet.pred<-as.factor(mynnet.pred)
+matrixnnet <- confusionMatrix(data=mynnet.pred, reference = testdata$Class)
+```
+
+
+```{r message=FALSE, warning=FALSE}
+matrixnnet$table
+```
+
+```{r echo=FALSE, fig.cap=("Confusion Matrix of nnet "), fig.show='hold', message=FALSE, warning=FALSE, out.width='40%'}
+fourfoldplot(matrixnnet$table, color = c("cyan", "pink"),
+             conf.level = 0, margin = 1, main = "Confusion Matrix")
+```
+
+
+### Decision Tree
+
+```{r}
+mytree <- rpart(Class ~ ., data=traindata)
+mytree.pred <- predict(mytree,testdata,type="class")
+```
+
+
+```{r}
+matrixtree<- confusionMatrix(data=mytree.pred, reference = testdata$Class)
+matrixtree$table
+```
+```{r echo=FALSE, fig.cap=("Confusion Matrix of tree "), fig.show='hold', message=FALSE, warning=FALSE, out.width='50%'}
+fourfoldplot(matrixtree$table, color = c("cyan", "pink"),
+             conf.level = 0, margin = 1, main = "Confusion Matrix")
+```
+
+
+### Random Forest 
+
+```{r}
+myrf <- randomForest(Class~., data = traindata,  probability = TRUE)
+myrf.pred <- predict(myrf, type="class", newdata=testdata, probability = TRUE)
+matrixrf <- confusionMatrix(data=myrf.pred, reference = testdata$Class)
+matrixrf$table
+```
+
+
+```{r echo=FALSE, fig.cap=("Confusion Matrix of rf "), fig.show='hold', message=FALSE, warning=FALSE, out.width='50%'}
+fourfoldplot(matrixrf$table, color = c("cyan", "pink"),
+             conf.level = 0, margin = 1, main = "Confusion Matrix")
+```
+
+predict classes for the evaluation data set
+
+
+
+
+
+## Combine the classifiers in an ensemble
+
+Finally, we use the trained ensemble model to make predictions on the combined predictions from the individual models, and evaluate the performance of the model using confusionMatrix function from caret package.
+
+```{r}
+mysvm.pred=as.factor(mysvm.pred)
+mytree.pred=as.factor(mytree.pred)
+mynnet.pred=as.factor(mynnet.pred)
+myrf.pred=as.factor(myrf.pred)
+ensemblePred <- data.frame(svm = mysvm.pred,nnet=mynnet.pred,tree=mytree.pred,rf = myrf.pred)
+```
+
+### Train a meta-model on the combined predictions
+
+we need to combine the predicted values from each individual model with the original test data to create a new data frame that includes the true class labels
+```{r}
+metaModel <- train(Class ~ ., data = cbind(ensemblePred, Class = testdata$Class), method = "rf", trControl = trainControl(method = "cv", number = 10))
+```
+
+
+### Make predictions using the ensemble model
+
+```{r}
+ensemblePredFinal <- predict(metaModel, newdata = ensemblePred)
+```
+
+
+
+## Performance Measure
+
+
+```{r}
+confusionMatrix(data = ensemblePredFinal, reference = testdata$Class)
+```
+
+We can see that the model correctly classified 87 out of 87 benign tumors and 56 out of 61 malignant tumors. However, the model also made 5 false negative predictions for malignant tumors (predicted as benign but actually malignant) and 0 false positive predictions for benign tumors (predicted as malignant but actually benign).
+
+The overall accuracy of the model is 0.9662 or 96.62%. This means that the model correctly classified 96.62% of the tumors in the test set.
+
+Overall, this is a good performance for a classification model, but we need to keep in mind that the sample size of the test set is relatively small, so we should be cautious about drawing general conclusions based on these results. We may need to evaluate the model on a larger dataset or using cross-validation to further validate its performance.
